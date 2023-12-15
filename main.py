@@ -1,37 +1,46 @@
-from bs4 import BeautifulSoup
-from requests import get
+from flask import Flask, render_template, request, redirect, send_file
 from extractors.wwr import extract_wwr_jobs
+from extractors.indeed import extract_indeed_jobs
+from file import save_to_file
 
-# search_keyword = input('Enter the search keyword : ')
-jobs = extract_wwr_jobs('python')
-print(jobs)
+app = Flask("JobScrapper")
 
-from selenium import webdriver
-broswer = webdriver.Chrome()
-broswer.get('https://kr.indeed.com/jobs?q=python&l=&from=searchOnHP&vjk=89395b6ac5014113')
+db = {}
 
-soup = BeautifulSoup(broswer.page_source, 'html.parser')
-job_list = soup.find('ul', class_="css-zu9cdh eu4oa1w0")
-jobs = job_list.find_all('li', recursive=False)
-results = []
-for job in jobs :
-    zone = job.find('div', class_="mosaic-zone")
-    if zone == None :
-        h2 = job.find('h2', class_='jobTitle')
-        anchor = job.select_one('h2 a')
-        link = anchor['href']
-        title = anchor.find('span')
-        company = job.find('span', attrs={'data-testid':'company-name'})
-        location = job.find('div', attrs={'data-testid':'text-location'})
-        job_data = {
-            'link' : f"https://kr.indeed.com{link}",
-            'company' : company.string,
-            'location' : location.string,
-            'position' : title.string
-        }
-        results.append(job_data)
-for result in results:
-    print(result, '\n\n')
+@app.route("/")
+def home():
+    return render_template("home.html", name='jan')
 
-while (True):
-   pass
+@app.route("/search")
+def hello():
+    keyword = request.args.get("keyword")
+    if (keyword == None):
+        return redirect("/")
+    if(keyword in db):
+        jobs = db[keyword]
+    else:
+        indeed = extract_indeed_jobs(keyword)
+        wwr = extract_wwr_jobs(keyword)
+        jobs = indeed+wwr
+        db[keyword] = jobs
+    return render_template("search.html", keyword=keyword, jobs=jobs)
+
+@app.route("/export")
+def export():
+    keyword = request.args.get("keyword")
+    if(keyword == None):
+        return redirect("/")
+    if(keyword not in db):
+        return redirect(f"/search?keyword={keyword}")
+    save_to_file(keyword, db[keyword])
+    return send_file(f"{keyword}.csv", as_attachment=True)
+
+
+app.run("0.0.0.0", debug=True)
+
+"""
+HTML에서 파이썬 변수, 파이썬 문법 사용하기
+1. {{ 변수이름 }} : 두개의 중괄호 안에 변수 → Flask가 변수를 값으로 변환해준다
+2. {% 파이썬문법 %} :  HTML에서 파이썬 코드를 사용할 수 있다
+3. {% endfor %} : 파이썬 코드 작성을 마쳤다는 표기
+"""
